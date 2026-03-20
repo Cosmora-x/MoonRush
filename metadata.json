@@ -1,0 +1,5 @@
+{
+  "name": "Moon Rover Rush",
+  "description": "A 2D graphical space game where you control a moon rover, jump over obstacles, and collect space gems.",
+  "requestFramePermissions": []
+}
