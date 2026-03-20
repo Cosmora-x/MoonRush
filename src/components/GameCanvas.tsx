@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Heart, Gem, Trophy, Play, RotateCcw, Home, Fuel } from 'lucide-react';
+import { Heart, Gem, Trophy, Play, RotateCcw, Home, Fuel, Volume2, VolumeX } from 'lucide-react';
+import { audioManager } from '../utils/audio';
 
 interface GameCanvasProps {
   onGameOver: (score: number) => void;
@@ -11,6 +12,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
   const [health, setHealth] = useState(3);
   const [fuel, setFuel] = useState(100);
   const [isPaused, setIsPaused] = useState(false);
+  const [isMuted, setIsMuted] = useState(audioManager.getMuted());
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -94,14 +96,18 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
     // Input handling
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !isGameOver) {
+        audioManager.init();
+        audioManager.startBGM();
         if (rover.isGrounded) {
           rover.vy = JUMP_STRENGTH;
           rover.isGrounded = false;
           rover.canDoubleJump = true;
+          audioManager.playJump();
           createParticles(rover.x + rover.width / 2, rover.y + rover.height, 10, '#888');
         } else if (rover.canDoubleJump) {
           rover.vy = JUMP_STRENGTH * 0.8;
           rover.canDoubleJump = false;
+          audioManager.playDoubleJump();
           createParticles(rover.x + rover.width / 2, rover.y + rover.height, 15, '#f97316');
         }
       }
@@ -109,14 +115,18 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
 
     const handleTouch = () => {
       if (!isGameOver) {
+        audioManager.init();
+        audioManager.startBGM();
         if (rover.isGrounded) {
           rover.vy = JUMP_STRENGTH;
           rover.isGrounded = false;
           rover.canDoubleJump = true;
+          audioManager.playJump();
           createParticles(rover.x + rover.width / 2, rover.y + rover.height, 10, '#888');
         } else if (rover.canDoubleJump) {
           rover.vy = JUMP_STRENGTH * 0.8;
           rover.canDoubleJump = false;
+          audioManager.playDoubleJump();
           createParticles(rover.x + rover.width / 2, rover.y + rover.height, 15, '#f97316');
         }
       }
@@ -232,6 +242,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
       if (currentFuel <= 0 && !isGameOver) {
         currentFuel = 0;
         isGameOver = true;
+        audioManager.stopBGM();
         createExplosion(rover.x + rover.width/2, rover.y + rover.height/2, true);
         setTimeout(() => onGameOver(currentScore), 1500);
       }
@@ -286,9 +297,11 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
           currentHealth -= 1;
           setHealth(currentHealth);
           rover.invulnerableTimer = 1500; // 1.5s invulnerability
+          audioManager.playCollision();
           
           if (currentHealth <= 0) {
             isGameOver = true;
+            audioManager.stopBGM();
             createExplosion(rover.x + rover.width/2, rover.y + rover.height/2, true);
             setTimeout(() => onGameOver(currentScore), 1500);
           } else {
@@ -312,10 +325,12 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
             const isGold = col.type === 'gold_gem';
             currentScore += isGold ? 150 : 50; // Ping score
             setScore(currentScore);
+            audioManager.playGemCollect(isGold);
             createParticles(col.x + col.width/2, col.y + col.height/2, 15, isGold ? '#fbbf24' : '#44ff44');
           } else {
             currentFuel = Math.min(100, currentFuel + 40);
             setFuel(currentFuel);
+            audioManager.playFuelPickup();
             createParticles(col.x + col.width/2, col.y + col.height/2, 15, '#38bdf8');
           }
           collectibles.splice(i, 1);
@@ -596,6 +611,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
       canvas.removeEventListener('touchstart', handleTouch);
       canvas.removeEventListener('mousedown', handleTouch);
       cancelAnimationFrame(animationFrameId);
+      audioManager.stopBGM();
     };
   }, [onGameOver]);
 
@@ -627,9 +643,17 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
           </div>
         </div>
         
-        <div className="text-right">
-          <div className="text-slate-400 font-mono text-sm uppercase tracking-widest">Distance</div>
-          <div className="text-white font-mono font-bold text-2xl">{Math.floor(score * 0.1)}m</div>
+        <div className="flex flex-col items-end gap-2 pointer-events-auto">
+          <button 
+            onClick={() => setIsMuted(audioManager.toggleMute())}
+            className="p-2 bg-slate-900/50 rounded-full backdrop-blur-sm border border-slate-700/50 text-slate-300 hover:text-white transition-colors"
+          >
+            {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+          </button>
+          <div className="text-right pointer-events-none">
+            <div className="text-slate-400 font-mono text-sm uppercase tracking-widest">Distance</div>
+            <div className="text-white font-mono font-bold text-2xl">{Math.floor(score * 0.1)}m</div>
+          </div>
         </div>
       </div>
 
