@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Heart, Gem, Trophy, Play, RotateCcw, Home } from 'lucide-react';
+import { Heart, Gem, Trophy, Play, RotateCcw, Home, Fuel } from 'lucide-react';
 
 interface GameCanvasProps {
   onGameOver: (score: number) => void;
@@ -9,6 +9,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [score, setScore] = useState(0);
   const [health, setHealth] = useState(3);
+  const [fuel, setFuel] = useState(100);
   const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
     let distance = 0;
     let currentScore = 0;
     let currentHealth = 3;
+    let currentFuel = 100;
     let isGameOver = false;
 
     // Entities
@@ -40,6 +42,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
       height: ROVER_HEIGHT,
       vy: 0,
       isGrounded: true,
+      canDoubleJump: false,
       wheelAngle: 0,
       invulnerableTimer: 0,
     };
@@ -59,6 +62,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
       width: number;
       height: number;
       collected: boolean;
+      type: 'gem' | 'fuel' | 'gold_gem';
     }
 
     interface Particle {
@@ -89,18 +93,32 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
 
     // Input handling
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && rover.isGrounded && !isGameOver) {
-        rover.vy = JUMP_STRENGTH;
-        rover.isGrounded = false;
-        createParticles(rover.x + rover.width / 2, rover.y + rover.height, 10, '#888');
+      if (e.code === 'Space' && !isGameOver) {
+        if (rover.isGrounded) {
+          rover.vy = JUMP_STRENGTH;
+          rover.isGrounded = false;
+          rover.canDoubleJump = true;
+          createParticles(rover.x + rover.width / 2, rover.y + rover.height, 10, '#888');
+        } else if (rover.canDoubleJump) {
+          rover.vy = JUMP_STRENGTH * 0.8;
+          rover.canDoubleJump = false;
+          createParticles(rover.x + rover.width / 2, rover.y + rover.height, 15, '#f97316');
+        }
       }
     };
 
     const handleTouch = () => {
-      if (rover.isGrounded && !isGameOver) {
-        rover.vy = JUMP_STRENGTH;
-        rover.isGrounded = false;
-        createParticles(rover.x + rover.width / 2, rover.y + rover.height, 10, '#888');
+      if (!isGameOver) {
+        if (rover.isGrounded) {
+          rover.vy = JUMP_STRENGTH;
+          rover.isGrounded = false;
+          rover.canDoubleJump = true;
+          createParticles(rover.x + rover.width / 2, rover.y + rover.height, 10, '#888');
+        } else if (rover.canDoubleJump) {
+          rover.vy = JUMP_STRENGTH * 0.8;
+          rover.canDoubleJump = false;
+          createParticles(rover.x + rover.width / 2, rover.y + rover.height, 15, '#f97316');
+        }
       }
     };
 
@@ -125,12 +143,24 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
     };
 
     const spawnCollectible = () => {
+      const rand = Math.random();
+      let type: 'gem' | 'fuel' | 'gold_gem' = 'gem';
+      let yPos = canvas.height - GROUND_HEIGHT - 80 - Math.random() * 100;
+
+      if (rand > 0.85) {
+        type = 'gold_gem';
+        yPos = canvas.height - GROUND_HEIGHT - 200 - Math.random() * 60;
+      } else if (rand > 0.4) {
+        type = 'fuel';
+      }
+
       collectibles.push({
         x: canvas.width,
-        y: canvas.height - GROUND_HEIGHT - 80 - Math.random() * 100,
+        y: yPos,
         width: 35,
         height: 35,
-        collected: false
+        collected: false,
+        type
       });
     };
 
@@ -145,6 +175,23 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
           maxLife: 20 + Math.random() * 20,
           color,
           size: Math.random() * 4 + 2
+        });
+      }
+    };
+
+    const createExplosion = (x: number, y: number, isBig: boolean = false) => {
+      const count = isBig ? 100 : 30;
+      const colors = ['#f97316', '#eab308', '#ef4444', '#64748b'];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x,
+          y,
+          vx: (Math.random() - 0.5) * (isBig ? 15 : 8),
+          vy: (Math.random() - 0.5) * (isBig ? 15 : 8) - 2,
+          life: 1,
+          maxLife: (isBig ? 40 : 20) + Math.random() * 20,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * (isBig ? 6 : 4) + 2
         });
       }
     };
@@ -180,10 +227,24 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
         gameSpeed += 0.1;
       }
 
+      // Fuel drain
+      currentFuel -= deltaTime * 0.005;
+      if (currentFuel <= 0 && !isGameOver) {
+        currentFuel = 0;
+        isGameOver = true;
+        createExplosion(rover.x + rover.width/2, rover.y + rover.height/2, true);
+        setTimeout(() => onGameOver(currentScore), 1500);
+      }
+      setFuel(Math.max(0, currentFuel));
+
       // Update Rover
       rover.vy += GRAVITY;
       rover.y += rover.vy;
       rover.wheelAngle += gameSpeed * 0.1;
+
+      if (!rover.isGrounded && rover.vy < 0) {
+         createParticles(rover.x + rover.width / 2, rover.y + rover.height, 2, '#38bdf8');
+      }
 
       if (rover.invulnerableTimer > 0) {
         rover.invulnerableTimer -= deltaTime;
@@ -194,6 +255,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
         rover.y = canvas.height - GROUND_HEIGHT - rover.height;
         rover.vy = 0;
         rover.isGrounded = true;
+        rover.canDoubleJump = false;
       }
 
       // Spawning logic
@@ -224,11 +286,13 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
           currentHealth -= 1;
           setHealth(currentHealth);
           rover.invulnerableTimer = 1500; // 1.5s invulnerability
-          createParticles(rover.x + rover.width/2, rover.y + rover.height/2, 30, '#ff4444');
           
           if (currentHealth <= 0) {
             isGameOver = true;
-            setTimeout(() => onGameOver(currentScore), 1000);
+            createExplosion(rover.x + rover.width/2, rover.y + rover.height/2, true);
+            setTimeout(() => onGameOver(currentScore), 1500);
+          } else {
+            createExplosion(rover.x + rover.width/2, rover.y + rover.height/2, false);
           }
         }
 
@@ -244,9 +308,16 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
 
         if (!col.collected && checkCollision(rover, col)) {
           col.collected = true;
-          currentScore += 50; // Ping score
-          setScore(currentScore);
-          createParticles(col.x + col.width/2, col.y + col.height/2, 15, '#44ff44');
+          if (col.type === 'gem' || col.type === 'gold_gem') {
+            const isGold = col.type === 'gold_gem';
+            currentScore += isGold ? 150 : 50; // Ping score
+            setScore(currentScore);
+            createParticles(col.x + col.width/2, col.y + col.height/2, 15, isGold ? '#fbbf24' : '#44ff44');
+          } else {
+            currentFuel = Math.min(100, currentFuel + 40);
+            setFuel(currentFuel);
+            createParticles(col.x + col.width/2, col.y + col.height/2, 15, '#38bdf8');
+          }
           collectibles.splice(i, 1);
           continue;
         }
@@ -332,7 +403,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
         }
       });
 
-      // Draw Collectibles (Gems)
+      // Draw Collectibles
       collectibles.forEach(col => {
         ctx.save();
         ctx.translate(col.x + col.width/2, col.y + col.height/2);
@@ -341,40 +412,62 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
         const floatOffset = Math.sin(distance * 0.05 + col.x) * 5;
         ctx.translate(0, floatOffset);
         
-        ctx.rotate(distance * 0.02);
-        
-        // Glow effect
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#34d399';
-        
-        // Outer crystal
-        ctx.fillStyle = '#059669'; // Emerald 600
-        ctx.beginPath();
-        ctx.moveTo(0, -col.height/2);
-        ctx.lineTo(col.width/2, 0);
-        ctx.lineTo(0, col.height/2);
-        ctx.lineTo(-col.width/2, 0);
-        ctx.fill();
-        
-        ctx.shadowBlur = 0; // Reset shadow
-        
-        // Inner crystal facets
-        ctx.fillStyle = '#34d399'; // Emerald 400
-        ctx.beginPath();
-        ctx.moveTo(0, -col.height/2);
-        ctx.lineTo(col.width/3, 0);
-        ctx.lineTo(0, col.height/3);
-        ctx.lineTo(-col.width/3, 0);
-        ctx.fill();
+        if (col.type === 'gem' || col.type === 'gold_gem') {
+          const isGold = col.type === 'gold_gem';
+          ctx.rotate(distance * 0.02);
+          
+          // Glow effect
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = isGold ? '#fbbf24' : '#34d399';
+          
+          // Outer crystal
+          ctx.fillStyle = isGold ? '#d97706' : '#059669'; // Amber 600 vs Emerald 600
+          ctx.beginPath();
+          ctx.moveTo(0, -col.height/2);
+          ctx.lineTo(col.width/2, 0);
+          ctx.lineTo(0, col.height/2);
+          ctx.lineTo(-col.width/2, 0);
+          ctx.fill();
+          
+          ctx.shadowBlur = 0; // Reset shadow
+          
+          // Inner crystal facets
+          ctx.fillStyle = isGold ? '#fbbf24' : '#34d399'; // Amber 400 vs Emerald 400
+          ctx.beginPath();
+          ctx.moveTo(0, -col.height/2);
+          ctx.lineTo(col.width/3, 0);
+          ctx.lineTo(0, col.height/3);
+          ctx.lineTo(-col.width/3, 0);
+          ctx.fill();
 
-        // Core highlight
-        ctx.fillStyle = '#a7f3d0'; // Emerald 200
-        ctx.beginPath();
-        ctx.moveTo(0, -col.height/4);
-        ctx.lineTo(col.width/6, 0);
-        ctx.lineTo(0, col.height/6);
-        ctx.lineTo(-col.width/6, 0);
-        ctx.fill();
+          // Core highlight
+          ctx.fillStyle = isGold ? '#fef08a' : '#a7f3d0'; // Yellow 200 vs Emerald 200
+          ctx.beginPath();
+          ctx.moveTo(0, -col.height/4);
+          ctx.lineTo(col.width/6, 0);
+          ctx.lineTo(0, col.height/6);
+          ctx.lineTo(-col.width/6, 0);
+          ctx.fill();
+        } else {
+          // Fuel Canister
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = '#38bdf8';
+          
+          ctx.fillStyle = '#0284c7'; // Sky 600
+          ctx.fillRect(-col.width/3, -col.height/2, col.width*0.66, col.height);
+          
+          ctx.fillStyle = '#e0f2fe'; // Sky 100
+          ctx.fillRect(-col.width/3 + 2, -col.height/2 + 2, col.width*0.66 - 4, col.height - 4);
+          
+          ctx.fillStyle = '#38bdf8'; // Sky 400
+          ctx.fillRect(-col.width/4, -col.height/4, col.width*0.5, col.height/2);
+          
+          // Cap
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(-col.width/6, -col.height/2 - 4, col.width/3, 4);
+          
+          ctx.shadowBlur = 0;
+        }
         
         ctx.restore();
       });
@@ -474,6 +567,23 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
         drawWheel(rover.width / 2 + 5, rover.height - 5);
         drawWheel(rover.width - 5, rover.height - 5);
 
+        // Thruster
+        if (!rover.isGrounded) {
+          ctx.fillStyle = '#f97316'; // Orange
+          ctx.beginPath();
+          ctx.moveTo(rover.width / 2 - 10, rover.height - 5);
+          ctx.lineTo(rover.width / 2 + 10, rover.height - 5);
+          ctx.lineTo(rover.width / 2, rover.height + 15 + Math.random() * 10);
+          ctx.fill();
+          
+          ctx.fillStyle = '#fef08a'; // Yellow inner
+          ctx.beginPath();
+          ctx.moveTo(rover.width / 2 - 5, rover.height - 5);
+          ctx.lineTo(rover.width / 2 + 5, rover.height - 5);
+          ctx.lineTo(rover.width / 2, rover.height + 5 + Math.random() * 5);
+          ctx.fill();
+        }
+
         ctx.restore();
       }
     };
@@ -506,6 +616,15 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
             <Gem className="w-5 h-5 text-emerald-400" />
             <span className="text-emerald-400 font-mono font-bold text-xl">{score}</span>
           </div>
+          <div className="flex items-center gap-2 bg-slate-900/50 px-3 py-1 rounded-full backdrop-blur-sm border border-slate-700/50 mt-1">
+            <Fuel className="w-4 h-4 text-sky-400" />
+            <div className="w-24 h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${fuel > 20 ? 'bg-sky-400' : 'bg-red-500 animate-pulse'}`}
+                style={{ width: `${fuel}%` }}
+              />
+            </div>
+          </div>
         </div>
         
         <div className="text-right">
@@ -526,7 +645,7 @@ export default function GameCanvas({ onGameOver }: GameCanvasProps) {
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-[fadeOut_2s_ease-in-out_2s_forwards]">
         <div className="bg-black/50 px-6 py-3 rounded-full backdrop-blur-sm text-white font-mono flex items-center gap-3">
           <span className="px-2 py-1 border border-white/30 rounded bg-white/10">SPACE</span>
-          <span>or TAP to jump</span>
+          <span>or TAP to jump (Double tap to double thrust)</span>
         </div>
       </div>
     </div>
